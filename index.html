@@ -466,16 +466,22 @@
 
       .task-item {
         border-bottom: 1px solid var(--border-default);
-        padding: 15px 4px;
+        padding: 15px 6px;
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 14px;
+        flex-direction: column;
+        gap: 10px;
         transition: background-color var(--transition);
       }
 
       .task-item:hover {
         background-color: var(--bg-surface);
+      }
+
+      .task-header-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
       }
 
       .task-main {
@@ -633,6 +639,75 @@
         color: var(--danger);
       }
 
+      /* Google 캘린더 연동 영역 */
+      .calendar-notice {
+        margin: 12px 0 4px;
+        padding: 12px 14px;
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-secondary);
+      }
+
+      .calendar-notice p {
+        margin: 0;
+      }
+
+      .calendar-notice p + p {
+        margin-top: 4px;
+      }
+
+      .calendar-notice strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .task-calendar-row {
+        padding-left: 32px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px;
+      }
+
+      .action-btn-calendar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border-color: #bfdbfe;
+        background-color: var(--bg-blue-soft);
+        color: var(--accent-blue-text);
+        font-weight: 600;
+      }
+
+      .action-btn-calendar:hover:not(:disabled) {
+        background-color: #dbeafe;
+        border-color: #93c5fd;
+        color: var(--accent-blue-hover);
+      }
+
+      .action-btn-calendar:disabled {
+        cursor: not-allowed;
+        background-color: var(--bg-surface);
+        border-color: var(--border-default);
+        color: var(--text-muted);
+        opacity: 0.85;
+      }
+
+      .calendar-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.4;
+      }
+
+      .calendar-hint-warn {
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
       /* 인라인 수정 영역 */
       .task-edit-form {
         width: 100%;
@@ -774,7 +849,7 @@
           padding: 18px 16px;
         }
 
-        .task-item {
+        .task-header-row {
           flex-direction: column;
           align-items: stretch;
           gap: 10px;
@@ -782,7 +857,11 @@
 
         .task-actions {
           justify-content: flex-end;
-          padding-left: 34px;
+          padding-left: 32px;
+        }
+
+        .task-calendar-row {
+          padding-left: 0;
         }
 
         .filter-tabs {
@@ -925,6 +1004,16 @@
             </select>
           </div>
 
+          <div class="calendar-notice" role="note" aria-label="Google 캘린더 추가 안내">
+            <p>
+              <strong>Google 캘린더 연동 안내:</strong> ‘Google 캘린더에 추가’를 누르면 업무 제목과 우선순위, 마감일이 Google로 전달됩니다.
+              Google 캘린더에서 확인 후 저장하세요. 이후 변경은 자동 동기화되지 않습니다.
+            </p>
+            <p>
+              새 탭에서 링크를 열더라도 자동으로 등록 완료 처리되지 않으며, 중복 저장 여부는 자동으로 판단할 수 없습니다.
+            </p>
+          </div>
+
           <div id="emptyGuide" class="empty-state" hidden>
             <h3 class="empty-title">아직 등록된 업무가 없습니다</h3>
             <p class="empty-desc">
@@ -1032,6 +1121,39 @@
           var localDate = new Date(year, month - 1, day);
           if (isNaN(localDate.getTime())) return dateStr;
           return dateStr + ' (' + WEEKDAYS[localDate.getDay()] + ')';
+        }
+
+        function getNextLocalDateCompact(dateStr) {
+          if (!dateStr) return '';
+          var parts = dateStr.split('-');
+          if (parts.length !== 3) return '';
+          var year = Number(parts[0]);
+          var month = Number(parts[1]);
+          var day = Number(parts[2]);
+          var next = new Date(year, month - 1, day + 1);
+          if (isNaN(next.getTime())) return '';
+          var ny = String(next.getFullYear()).padStart(4, '0');
+          var nm = String(next.getMonth() + 1).padStart(2, '0');
+          var nd = String(next.getDate()).padStart(2, '0');
+          return ny + nm + nd;
+        }
+
+        function buildGoogleCalendarUrl(task) {
+          if (!task || !task.dueDate) return '';
+          var startCompact = task.dueDate.replace(/-/g, '');
+          var endCompact = getNextLocalDateCompact(task.dueDate);
+          if (!startCompact || !endCompact) return '';
+          var detailsText =
+            '우선순위: ' +
+            PRIORITY_LABELS[task.priority] +
+            '\n업무 플래너에서 추가한 일정';
+          var params = new URLSearchParams({
+            action: 'TEMPLATE',
+            text: task.title,
+            dates: startCompact + '/' + endCompact,
+            details: detailsText
+          });
+          return 'https://calendar.google.com/calendar/r/eventedit?' + params.toString();
         }
 
         function generateUniqueId() {
@@ -1514,8 +1636,49 @@
           actions.appendChild(editBtn);
           actions.appendChild(deleteBtn);
 
-          li.appendChild(main);
-          li.appendChild(actions);
+          var headerRow = document.createElement('div');
+          headerRow.className = 'task-header-row';
+          headerRow.appendChild(main);
+          headerRow.appendChild(actions);
+
+          var calendarRow = document.createElement('div');
+          calendarRow.className = 'task-calendar-row';
+
+          var calendarUrl = buildGoogleCalendarUrl(task);
+          if (calendarUrl) {
+            var calLink = document.createElement('a');
+            calLink.className = 'action-btn action-btn-calendar';
+            calLink.href = calendarUrl;
+            calLink.target = '_blank';
+            calLink.rel = 'noopener noreferrer';
+            calLink.textContent = 'Google 캘린더에 추가';
+            calLink.setAttribute('aria-label', task.title + ' Google 캘린더에 추가 (새 탭에서 열림)');
+
+            var calHint = document.createElement('span');
+            calHint.className = 'calendar-hint';
+            calHint.textContent =
+              '제목·우선순위가 Google로 전달됩니다. Google 캘린더에서 확인 후 저장하세요.';
+
+            calendarRow.appendChild(calLink);
+            calendarRow.appendChild(calHint);
+          } else {
+            var calDisabledBtn = document.createElement('button');
+            calDisabledBtn.type = 'button';
+            calDisabledBtn.className = 'action-btn action-btn-calendar';
+            calDisabledBtn.disabled = true;
+            calDisabledBtn.setAttribute('aria-disabled', 'true');
+            calDisabledBtn.textContent = 'Google 캘린더에 추가';
+
+            var noDueHint = document.createElement('span');
+            noDueHint.className = 'calendar-hint calendar-hint-warn';
+            noDueHint.textContent = '마감일을 먼저 설정해 주세요';
+
+            calendarRow.appendChild(calDisabledBtn);
+            calendarRow.appendChild(noDueHint);
+          }
+
+          li.appendChild(headerRow);
+          li.appendChild(calendarRow);
           return li;
         }
 
